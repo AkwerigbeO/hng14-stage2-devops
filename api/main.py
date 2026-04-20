@@ -82,4 +82,3 @@ def get_job(job_id: str):
     except redis.RedisError as e:
         logger.error(f"Failed to get job {job_id}: {e}")
         raise HTTPException(status_code=503, detail="Service Unavailable")
-        

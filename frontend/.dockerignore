@@ -1,0 +1,14 @@
+**/.git
+**/.gitignore
+**/.env
+**/node_modules
+**/npm-debug.log
+**/yarn-error.log
+**/.vscode
+**/.idea
+**/Dockerfile
+**/docker-compose*
+**/.next
+**/out
+**/build
+**/dist

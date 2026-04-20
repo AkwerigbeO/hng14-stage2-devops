@@ -2,7 +2,6 @@ import redis
 import time
 import os
 import signal
-import sys
 import logging
 from dotenv import load_dotenv
 
@@ -20,13 +19,16 @@ r = redis.Redis(connection_pool=pool)
 
 running = True
 
+
 def sig_handler(signum, frame):
     global running
     logger.info("Graceful shutdown initiated...")
     running = False
 
+
 signal.signal(signal.SIGINT, sig_handler)
 signal.signal(signal.SIGTERM, sig_handler)
+
 
 def process_job(job_id):
     logger.info(f"Processing job {job_id}")
@@ -35,6 +37,7 @@ def process_job(job_id):
     # Remove from processing queue once done
     r.lrem("job_processing", 0, job_id)
     logger.info(f"Done: {job_id}")
+
 
 logger.info("Worker started, waiting for jobs...")
 while running:
@@ -45,7 +48,7 @@ while running:
             process_job(job_id.decode())
     except redis.RedisError as e:
         logger.error(f"Redis connection error: {e}")
-        time.sleep(2) # Backoff before retrying
+        time.sleep(2)  # Backoff before retrying
     except Exception as e:
         logger.error(f"Unexpected error processing job: {e}")
         time.sleep(1)

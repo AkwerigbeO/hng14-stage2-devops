@@ -104,17 +104,6 @@ jobs:
           docker push localhost:5000/frontend:${{ github.sha }}
           docker push localhost:5000/frontend:latest
 
-  security_scan:
-    runs-on: ubuntu-latest
-    needs: build
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-       
-      - name: Start local Docker registry
-        run: docker run -d -p 5000:5000 --name registry registry:2 
-
       - name: Install Trivy
         run: |
           sudo apt-get install -y wget
@@ -126,19 +115,19 @@ jobs:
         run: |
           trivy image --severity CRITICAL --exit-code 1 \
           --format sarif -o trivy-api.sarif \
-          localhost:5000/api:latest
+          api:latest
 
       - name: Scan Worker image
         run: |
           trivy image --severity CRITICAL --exit-code 1 \
           --format sarif -o trivy-worker.sarif \
-          localhost:5000/worker:latest
+          worker:latest
 
       - name: Scan Frontend image
         run: |
           trivy image --severity CRITICAL --exit-code 1 \
           --format sarif -o trivy-frontend.sarif \
-          localhost:5000/frontend:latest
+          frontend:latest
 
       - name: Upload SARIF results
         uses: actions/upload-artifact@v4
@@ -147,4 +136,4 @@ jobs:
           path: |
             trivy-api.sarif
             trivy-worker.sarif
-            trivy-frontend.sarif 
+            trivy-frontend.sarif

@@ -62,5 +62,7 @@ jobs:
         run: pip install -r api/requirements.txt pytest httpx
 
       - name: Run API tests
+        env:
+          PYTHONPATH: .
         run: pytest api/tests
 

@@ -16,8 +16,7 @@ RUN apt-get update && \
 COPY requirements.txt .
 
 # Install dependencies into a wheels directory
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip wheel --no-cache-dir --wheel-dir /app/wheels -r requirements.txt
+RUN pip wheel --no-cache-dir --wheel-dir /app/wheels -r requirements.txt
 
 # Stage 2: Final production image
 FROM python:3.11-slim

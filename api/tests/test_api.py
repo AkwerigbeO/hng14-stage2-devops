@@ -39,4 +39,3 @@ def test_create_job():
 def test_get_job():
     response = client.get("/jobs/test-id")
     assert response.status_code in [200, 404]
-

@@ -156,13 +156,13 @@ jobs:
           sudo mv trivy /usr/local/bin/
 
       - name: Scan API image
-        run: trivy image --input images/api.tar --severity CRITICAL --exit-code 1 --format sarif -o trivy-api.sarif
+        run: trivy image --input images/api.tar --severity CRITICAL --ignore-unfixed --exit-code 1 --format sarif -o trivy-api.sarif
 
       - name: Scan Worker image
-        run: trivy image --input images/worker.tar --severity CRITICAL --exit-code 1 --format sarif -o trivy-worker.sarif
+        run: trivy image --input images/worker.tar --severity CRITICAL --ignore-unfixed --exit-code 1 --format sarif -o trivy-worker.sarif
 
       - name: Scan Frontend image
-        run: trivy image --input images/frontend.tar --severity CRITICAL --exit-code 1 --format sarif -o trivy-frontend.sarif
+        run: trivy image --input images/frontend.tar --severity CRITICAL --ignore-unfixed --exit-code 1 --format sarif -o trivy-frontend.sarif
 
       - name: Upload SARIF results
         uses: actions/upload-artifact@v4

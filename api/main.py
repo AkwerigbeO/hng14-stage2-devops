@@ -23,18 +23,30 @@ pool = redis.ConnectionPool(
     decode_responses=True
 )
 
-r = redis.Redis(connection_pool=pool)
+def get_redis():
+    return redis.Redis(connection_pool=pool)
 
-for i in range(5):
-    try:
-        r.ping()
-        logger.info("Connected to Redis")
-        break
-    except redis.RedisError:
-        logger.warning("Redis not ready, retrying...")
-        time.sleep(2)
-else:
-    raise Exception("Could not connect to Redis")
+
+r = get_redis()
+
+
+def check_redis_connection():
+    # Only run connection check if not in testing environment
+    if os.getenv("TESTING"):
+        return
+    for i in range(5):
+        try:
+            r.ping()
+            logger.info("Connected to Redis")
+            break
+        except redis.RedisError:
+            logger.warning("Redis not ready, retrying...")
+            time.sleep(2)
+    else:
+        raise Exception("Could not connect to Redis")
+
+
+check_redis_connection()
 
 
 @app.get("/health")

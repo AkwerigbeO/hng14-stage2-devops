@@ -25,3 +25,42 @@ jobs:
 
       - name: Run flake8 (Worker)
         run: flake8 worker
+         # ---------------- FRONTEND LINT ----------------
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Run ESLint
+        working-directory: frontend
+        run: npm run lint
+
+      # ---------------- DOCKER LINT ----------------
+      - name: Lint Dockerfiles (Hadolint)
+        run: |
+          docker run --rm -i hadolint/hadolint < api/Dockerfile
+          docker run --rm -i hadolint/hadolint < worker/Dockerfile
+          docker run --rm -i hadolint/hadolint < frontend/Dockerfile
+test:
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r api/requirements.txt pytest
+
+      - name: Run API tests
+        run: pytest api/tests
+

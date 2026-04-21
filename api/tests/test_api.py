@@ -1,9 +1,10 @@
 import os
 os.environ["TESTING"] = "1"
 
-from fastapi.testclient import TestClient
-from unittest.mock import patch
-from api.main import app
+from fastapi.testclient import TestClient  # noqa: E402
+from unittest.mock import patch  # noqa: E402
+from api.main import app  # noqa: E402
+
 
 class FakeRedis:
     def ping(self):
@@ -38,3 +39,4 @@ def test_create_job():
 def test_get_job():
     response = client.get("/jobs/test-id")
     assert response.status_code in [200, 404]
+

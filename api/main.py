@@ -23,6 +23,7 @@ pool = redis.ConnectionPool(
     decode_responses=True
 )
 
+
 def get_redis():
     return redis.Redis(connection_pool=pool)
 

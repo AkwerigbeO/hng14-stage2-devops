@@ -45,7 +45,7 @@ jobs:
           docker run --rm -i hadolint/hadolint < api/Dockerfile
           docker run --rm -i hadolint/hadolint < worker/Dockerfile
           docker run --rm -i hadolint/hadolint < frontend/Dockerfile
-test:
+  test:
     runs-on: ubuntu-latest
     needs: lint
 

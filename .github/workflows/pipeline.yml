@@ -7,7 +7,6 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,7 +24,7 @@ jobs:
 
       - name: Run flake8 (Worker)
         run: flake8 worker
-         # ---------------- FRONTEND LINT ----------------
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -39,16 +38,15 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
-      # ---------------- DOCKER LINT ----------------
       - name: Lint Dockerfiles (Hadolint)
         run: |
           docker run --rm -i hadolint/hadolint hadolint --ignore DL3008 - < api/Dockerfile
           docker run --rm -i hadolint/hadolint hadolint --ignore DL3008 - < worker/Dockerfile
           docker run --rm -i hadolint/hadolint hadolint --ignore DL3008 - < frontend/Dockerfile
+
   test:
     runs-on: ubuntu-latest
     needs: lint
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -59,26 +57,32 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r api/requirements.txt pytest httpx
+        run: pip install -r api/requirements.txt pytest httpx pytest-cov
 
-      - name: Run API tests
+      - name: Run API unit tests with coverage
         env:
           PYTHONPATH: .
-        run: pytest api/tests
+        run: pytest --cov=api --cov-report=xml api/tests
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
 
   build:
     runs-on: ubuntu-latest
     needs: test
-
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Start local Docker registry
-        run: docker run -d -p 5000:5000 --name registry registry:2
-
-      # API
-      - name: Build and push API
+      - name: Build, tag, and push API
         run: |
           docker build -t api:latest ./api
           docker tag api:latest localhost:5000/api:${{ github.sha }}
@@ -86,8 +90,7 @@ jobs:
           docker push localhost:5000/api:${{ github.sha }}
           docker push localhost:5000/api:latest
 
-      # Worker
-      - name: Build and push Worker
+      - name: Build, tag, and push Worker
         run: |
           docker build -t worker:latest ./worker
           docker tag worker:latest localhost:5000/worker:${{ github.sha }}
@@ -95,14 +98,37 @@ jobs:
           docker push localhost:5000/worker:${{ github.sha }}
           docker push localhost:5000/worker:latest
 
-      # Frontend
-      - name: Build and push Frontend
+      - name: Build, tag, and push Frontend
         run: |
           docker build -t frontend:latest ./frontend
           docker tag frontend:latest localhost:5000/frontend:${{ github.sha }}
           docker tag frontend:latest localhost:5000/frontend:latest
           docker push localhost:5000/frontend:${{ github.sha }}
           docker push localhost:5000/frontend:latest
+
+      - name: Save Docker images to tarballs
+        run: |
+          mkdir -p images
+          docker save -o images/api.tar localhost:5000/api:latest
+          docker save -o images/worker.tar localhost:5000/worker:latest
+          docker save -o images/frontend.tar localhost:5000/frontend:latest
+
+      - name: Upload image artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-images
+          path: images/
+          retention-days: 1
+
+  security_scan:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download image artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images
+          path: images/
 
       - name: Install Trivy
         run: |
@@ -112,28 +138,142 @@ jobs:
           sudo mv trivy /usr/local/bin/
 
       - name: Scan API image
-        run: |
-          trivy image --severity CRITICAL --exit-code 1 \
-          --format sarif -o trivy-api.sarif \
-          api:latest
+        run: trivy image --input images/api.tar --severity CRITICAL --exit-code 1 --format sarif -o trivy-api.sarif
 
       - name: Scan Worker image
-        run: |
-          trivy image --severity CRITICAL --exit-code 1 \
-          --format sarif -o trivy-worker.sarif \
-          worker:latest
+        run: trivy image --input images/worker.tar --severity CRITICAL --exit-code 1 --format sarif -o trivy-worker.sarif
 
       - name: Scan Frontend image
-        run: |
-          trivy image --severity CRITICAL --exit-code 1 \
-          --format sarif -o trivy-frontend.sarif \
-          frontend:latest
+        run: trivy image --input images/frontend.tar --severity CRITICAL --exit-code 1 --format sarif -o trivy-frontend.sarif
 
       - name: Upload SARIF results
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: trivy-reports
           path: |
             trivy-api.sarif
             trivy-worker.sarif
             trivy-frontend.sarif
+
+  integration_test:
+    runs-on: ubuntu-latest
+    needs: security_scan
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download image artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images
+          path: images/
+
+      - name: Load Docker images
+        run: |
+          docker load -i images/api.tar
+          docker load -i images/worker.tar
+          docker load -i images/frontend.tar
+
+      - name: Re-tag loaded images for compose
+        run: |
+          docker tag localhost:5000/api:latest api:latest
+          docker tag localhost:5000/worker:latest worker:latest
+          docker tag localhost:5000/frontend:latest frontend:latest
+
+      - name: Start Docker Compose stack
+        run: docker compose up -d
+
+      - name: Poll frontend and verify job completion
+        run: |
+          echo "Waiting for stack to initialize..."
+          sleep 10
+          
+          sudo apt-get install -y jq
+          
+          echo "Submitting job..."
+          JOB_RES=$(curl -s -X POST http://localhost:3000/submit)
+          echo "Response: $JOB_RES"
+          JOB_ID=$(echo $JOB_RES | jq -r '.job_id // .id')
+          
+          if [ "$JOB_ID" = "null" ] || [ -z "$JOB_ID" ]; then
+            echo "Failed to retrieve Job ID!"
+            curl -s http://localhost:3000/health || true
+            docker compose logs
+            exit 1
+          fi
+          
+          echo "Polling job status for ID: $JOB_ID"
+          timeout=30
+          elapsed=0
+          check_interval=2
+          success=false
+          
+          while [ $elapsed -lt $timeout ]; do
+            STATUS_RES=$(curl -s http://localhost:3000/status/$JOB_ID)
+            STATUS=$(echo $STATUS_RES | jq -r '.status')
+            echo "Status: $STATUS"
+            
+            if [ "$STATUS" = "completed" ]; then
+              success=true
+              break
+            fi
+            
+            sleep $check_interval
+            elapsed=$((elapsed + check_interval))
+          done
+          
+          if [ "$success" = "false" ]; then
+            echo "Integration test failed! Job did not complete within $timeout seconds."
+            docker compose logs
+            exit 1
+          fi
+          
+          echo "Integration test passed successfully!"
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: integration_test
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Simulated Rolling Update Deploy
+        run: |
+          echo "======================================"
+          echo "Starting simulated rolling update..."
+          echo "======================================"
+          echo "Bringing up new container..."
+          sleep 2
+          
+          timeout=60
+          check_interval=5
+          elapsed=0
+          passed=false
+          
+          while [ $elapsed -lt $timeout ]; do
+            if [ $elapsed -ge 10 ]; then
+              echo "[Healthcheck]: Container healthy!"
+              passed=true
+              break
+            fi
+            echo "[Healthcheck]: Waiting for container health check... ($elapsed seconds)"
+            sleep $check_interval
+            elapsed=$((elapsed + check_interval))
+          done
+          
+          if [ "$passed" = false ]; then
+            echo "======================================"
+            echo "DEPLOY ABORTED: Health check failed within $timeout seconds."
+            echo "Old container remains running."
+            echo "======================================"
+            exit 1
+          fi
+          
+          echo "Stopping old container cleanly..."
+          sleep 2
+          echo "======================================"
+          echo "Deployment completed successfully!"
+          echo "======================================"

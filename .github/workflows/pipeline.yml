@@ -66,40 +66,40 @@ jobs:
           PYTHONPATH: .
         run: pytest api/tests
 
-build:
-  runs-on: ubuntu-latest
-  needs: test
+  build:
+    runs-on: ubuntu-latest
+    needs: test
 
-  steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Start local Docker registry
-      run: docker run -d -p 5000:5000 --name registry registry:2
+      - name: Start local Docker registry
+        run: docker run -d -p 5000:5000 --name registry registry:2
 
-    # API
-    - name: Build and push API
-      run: |
-        docker build -t api:latest ./api
-        docker tag api:latest localhost:5000/api:${{ github.sha }}
-        docker tag api:latest localhost:5000/api:latest
-        docker push localhost:5000/api:${{ github.sha }}
-        docker push localhost:5000/api:latest
+      # API
+      - name: Build and push API
+        run: |
+          docker build -t api:latest ./api
+          docker tag api:latest localhost:5000/api:${{ github.sha }}
+          docker tag api:latest localhost:5000/api:latest
+          docker push localhost:5000/api:${{ github.sha }}
+          docker push localhost:5000/api:latest
 
-    # Worker
-    - name: Build and push Worker
-      run: |
-        docker build -t worker:latest ./worker
-        docker tag worker:latest localhost:5000/worker:${{ github.sha }}
-        docker tag worker:latest localhost:5000/worker:latest
-        docker push localhost:5000/worker:${{ github.sha }}
-        docker push localhost:5000/worker:latest
+      # Worker
+      - name: Build and push Worker
+        run: |
+          docker build -t worker:latest ./worker
+          docker tag worker:latest localhost:5000/worker:${{ github.sha }}
+          docker tag worker:latest localhost:5000/worker:latest
+          docker push localhost:5000/worker:${{ github.sha }}
+          docker push localhost:5000/worker:latest
 
-    # Frontend
-    - name: Build and push Frontend
-      run: |
-        docker build -t frontend:latest ./frontend
-        docker tag frontend:latest localhost:5000/frontend:${{ github.sha }}
-        docker tag frontend:latest localhost:5000/frontend:latest
-        docker push localhost:5000/frontend:${{ github.sha }}
-        docker push localhost:5000/frontend:latest
+      # Frontend
+      - name: Build and push Frontend
+        run: |
+          docker build -t frontend:latest ./frontend
+          docker tag frontend:latest localhost:5000/frontend:${{ github.sha }}
+          docker tag frontend:latest localhost:5000/frontend:latest
+          docker push localhost:5000/frontend:${{ github.sha }}
+          docker push localhost:5000/frontend:latest

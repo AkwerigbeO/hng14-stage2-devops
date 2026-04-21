@@ -6,7 +6,6 @@
 **/yarn-error.log
 **/.vscode
 **/.idea
-**/Dockerfile
 **/docker-compose*
 **/.next
 **/out

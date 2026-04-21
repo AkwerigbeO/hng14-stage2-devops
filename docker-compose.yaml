@@ -13,6 +13,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: "256M"
 
   api:
     build:
@@ -23,10 +28,12 @@ services:
       redis:
         condition: service_healthy
     environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      QUEUE_NAME: ${QUEUE_NAME:-job}
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     networks:
       - app-network
     healthcheck:
@@ -49,8 +56,10 @@ services:
       redis:
         condition: service_healthy
     environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      QUEUE_NAME: ${QUEUE_NAME:-job}
     networks:
       - app-network
     deploy:
@@ -68,9 +77,10 @@ services:
       api:
         condition: service_healthy
     environment:
-      API_URL: http://api:8000
+      API_URL: ${API_URL:-http://api:8000}
+      PORT: ${PORT:-3000}
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
     networks:
       - app-network
     healthcheck:

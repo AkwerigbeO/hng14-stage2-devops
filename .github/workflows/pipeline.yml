@@ -19,10 +19,10 @@ jobs:
       - name: Install flake8
         run: pip install flake8
 
-      - name: Run flake8 (API)
+      - name: Run flake8 on API
         run: flake8 api
 
-      - name: Run flake8 (Worker)
+      - name: Run flake8 on Worker
         run: flake8 worker
 
       - name: Set up Node
@@ -32,13 +32,13 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install
+        run: npm ci
 
-      - name: Run ESLint
+      - name: Run ESLint on frontend
         working-directory: frontend
-        run: npm run lint
+        run: npx eslint .
 
-      - name: Lint Dockerfiles (Hadolint)
+      - name: Lint Dockerfiles with Hadolint
         run: |
           docker run --rm -i hadolint/hadolint hadolint --ignore DL3008 - < api/Dockerfile
           docker run --rm -i hadolint/hadolint hadolint --ignore DL3008 - < worker/Dockerfile
@@ -57,12 +57,13 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r api/requirements.txt pytest httpx pytest-cov
+        run: pip install -r api/requirements.txt
 
       - name: Run API unit tests with coverage
         env:
           PYTHONPATH: .
-        run: pytest --cov=api --cov-report=xml api/tests
+          TESTING: "1"
+        run: pytest --cov=api --cov-report=xml api/tests/
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -82,32 +83,49 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build, tag, and push API
-        run: |
-          docker build -t api:latest ./api
-          docker tag api:latest localhost:5000/api:${{ github.sha }}
-          docker tag api:latest localhost:5000/api:latest
-          docker push localhost:5000/api:${{ github.sha }}
-          docker push localhost:5000/api:latest
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
 
-      - name: Build, tag, and push Worker
-        run: |
-          docker build -t worker:latest ./worker
-          docker tag worker:latest localhost:5000/worker:${{ github.sha }}
-          docker tag worker:latest localhost:5000/worker:latest
-          docker push localhost:5000/worker:${{ github.sha }}
-          docker push localhost:5000/worker:latest
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./api
+          push: true
+          tags: |
+            localhost:5000/api:${{ github.sha }}
+            localhost:5000/api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Build, tag, and push Frontend
-        run: |
-          docker build -t frontend:latest ./frontend
-          docker tag frontend:latest localhost:5000/frontend:${{ github.sha }}
-          docker tag frontend:latest localhost:5000/frontend:latest
-          docker push localhost:5000/frontend:${{ github.sha }}
-          docker push localhost:5000/frontend:latest
+      - name: Build and push Worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./worker
+          push: true
+          tags: |
+            localhost:5000/worker:${{ github.sha }}
+            localhost:5000/worker:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            localhost:5000/frontend:${{ github.sha }}
+            localhost:5000/frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Save Docker images to tarballs
         run: |
+          docker pull localhost:5000/api:latest
+          docker pull localhost:5000/worker:latest
+          docker pull localhost:5000/frontend:latest
           mkdir -p images
           docker save -o images/api.tar localhost:5000/api:latest
           docker save -o images/worker.tar localhost:5000/worker:latest
@@ -132,8 +150,8 @@ jobs:
 
       - name: Install Trivy
         run: |
-          sudo apt-get install -y wget
-          wget https://github.com/aquasecurity/trivy/releases/download/v0.70.0/trivy_0.70.0_Linux-64bit.tar.gz
+          sudo apt-get update && sudo apt-get install -y wget
+          wget -q https://github.com/aquasecurity/trivy/releases/download/v0.70.0/trivy_0.70.0_Linux-64bit.tar.gz
           sudo tar -xzf trivy_0.70.0_Linux-64bit.tar.gz
           sudo mv trivy /usr/local/bin/
 
@@ -181,55 +199,10 @@ jobs:
           docker tag localhost:5000/worker:latest worker:latest
           docker tag localhost:5000/frontend:latest frontend:latest
 
-      - name: Start Docker Compose stack
-        run: docker compose up -d
-
-      - name: Poll frontend and verify job completion
+      - name: Run integration tests
         run: |
-          echo "Waiting for stack to initialize..."
-          sleep 10
-          
-          sudo apt-get install -y jq
-          
-          echo "Submitting job..."
-          JOB_RES=$(curl -s -X POST http://localhost:3000/submit)
-          echo "Response: $JOB_RES"
-          JOB_ID=$(echo $JOB_RES | jq -r '.job_id // .id')
-          
-          if [ "$JOB_ID" = "null" ] || [ -z "$JOB_ID" ]; then
-            echo "Failed to retrieve Job ID!"
-            curl -s http://localhost:3000/health || true
-            docker compose logs
-            exit 1
-          fi
-          
-          echo "Polling job status for ID: $JOB_ID"
-          timeout=30
-          elapsed=0
-          check_interval=2
-          success=false
-          
-          while [ $elapsed -lt $timeout ]; do
-            STATUS_RES=$(curl -s http://localhost:3000/status/$JOB_ID)
-            STATUS=$(echo $STATUS_RES | jq -r '.status')
-            echo "Status: $STATUS"
-            
-            if [ "$STATUS" = "completed" ]; then
-              success=true
-              break
-            fi
-            
-            sleep $check_interval
-            elapsed=$((elapsed + check_interval))
-          done
-          
-          if [ "$success" = "false" ]; then
-            echo "Integration test failed! Job did not complete within $timeout seconds."
-            docker compose logs
-            exit 1
-          fi
-          
-          echo "Integration test passed successfully!"
+          chmod +x scripts/integration.sh
+          bash scripts/integration.sh
 
       - name: Tear down stack
         if: always()
@@ -247,12 +220,12 @@ jobs:
           echo "======================================"
           echo "Bringing up new container..."
           sleep 2
-          
+
           timeout=60
           check_interval=5
           elapsed=0
           passed=false
-          
+
           while [ $elapsed -lt $timeout ]; do
             if [ $elapsed -ge 10 ]; then
               echo "[Healthcheck]: Container healthy!"
@@ -263,7 +236,7 @@ jobs:
             sleep $check_interval
             elapsed=$((elapsed + check_interval))
           done
-          
+
           if [ "$passed" = false ]; then
             echo "======================================"
             echo "DEPLOY ABORTED: Health check failed within $timeout seconds."
@@ -271,7 +244,7 @@ jobs:
             echo "======================================"
             exit 1
           fi
-          
+
           echo "Stopping old container cleanly..."
           sleep 2
           echo "======================================"

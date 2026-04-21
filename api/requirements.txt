@@ -2,3 +2,6 @@ fastapi
 uvicorn
 redis
 python-dotenv
+pytest
+httpx
+pytest-cov

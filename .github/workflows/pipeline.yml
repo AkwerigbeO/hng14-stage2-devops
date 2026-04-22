@@ -199,10 +199,11 @@ jobs:
           docker tag localhost:5000/worker:latest worker:latest
           docker tag localhost:5000/frontend:latest frontend:latest
 
-      - name: Run integration tests
+      - name: Start stack and run integration tests
         run: |
-          chmod +x scripts/integration.sh
-          bash scripts/integration.sh
+          docker compose up -d
+          chmod +x integration.sh
+          bash integration.sh
 
       - name: Tear down stack
         if: always()
